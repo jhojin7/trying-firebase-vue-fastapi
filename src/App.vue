@@ -59,12 +59,17 @@ import {
 
 // Firebase configuration
 const firebaseConfig = {
-  // Add your Firebase config here
-}
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)
-const auth = getAuth()
+const auth = getAuth(app)
 
 // Auth state
 const isAuthenticated = ref(false)
@@ -76,7 +81,7 @@ const todos = ref([])
 const newTodo = ref('')
 
 // API URL
-const API_URL = 'http://localhost:8000/api'
+const API_URL = 'http://localhost:9090/api'
 
 // Auth functions
 const signInWithGoogle = async () => {

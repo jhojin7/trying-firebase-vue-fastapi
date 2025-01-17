@@ -8,9 +8,13 @@ from firebase_admin import credentials, auth
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
 from datetime import datetime
+import httpx
+from dotenv import load_dotenv
+import os
+
 
 # Initialize Firebase Admin
-cred = credentials.Certificate("path/to/your/firebase-credentials.json")
+cred = credentials.Certificate("./firebase-adminsdk.json")
 firebase_admin.initialize_app(cred)
 
 # Initialize FastAPI
@@ -26,10 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Cloudflare Workers KV configuration
-ACCOUNT_ID = "your_account_id"
-NAMESPACE_ID = "your_namespace_id"
-API_TOKEN = "your_api_token"
+ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+NAMESPACE_ID = os.getenv("NAMESPACE_ID")
+API_TOKEN = os.getenv("API_TOKEN")
 KV_URL = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/storage/kv/namespaces/{NAMESPACE_ID}"
 
 
@@ -66,20 +73,19 @@ async def get_current_user(
 
 # KV Helper functions
 async def kv_get(key: str):
-    import httpx
-
+    print(key)
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"{KV_URL}/values/{key}", headers={"Authorization": f"Bearer {API_TOKEN}"}
         )
+        print(response)
         if response.status_code == 404:
-            return None
+            return 404
+        print(">>>>>>>>", response.json())
         return response.json()
 
 
 async def kv_put(key: str, value: dict):
-    import httpx
-
     async with httpx.AsyncClient() as client:
         response = await client.put(
             f"{KV_URL}/values/{key}",
@@ -90,8 +96,6 @@ async def kv_put(key: str, value: dict):
 
 
 async def kv_delete(key: str):
-    import httpx
-
     async with httpx.AsyncClient() as client:
         response = await client.delete(
             f"{KV_URL}/values/{key}", headers={"Authorization": f"Bearer {API_TOKEN}"}
@@ -103,12 +107,16 @@ async def kv_delete(key: str):
 @app.get("/api/todos", response_model=List[Todo])
 async def get_todos(user_id: str = Depends(get_current_user)):
     todos = await kv_get(f"todos_{user_id}")
+    if 404 == todos:
+        return []
     return todos or []
 
 
 @app.post("/api/todos", response_model=Todo)
 async def create_todo(todo: TodoCreate, user_id: str = Depends(get_current_user)):
-    todos = await kv_get(f"todos_{user_id}") or []
+    todos = await kv_get(f"todos_{user_id}")
+    if 404 == todos:
+        raise HTTPException(status_code=404, detail="todo not ok")
 
     new_todo = Todo(
         id=str(uuid.uuid4()),
@@ -127,7 +135,10 @@ async def create_todo(todo: TodoCreate, user_id: str = Depends(get_current_user)
 async def update_todo(
     todo_id: str, todo_update: TodoUpdate, user_id: str = Depends(get_current_user)
 ):
-    todos = await kv_get(f"todos_{user_id}") or []
+    todos = await kv_get(f"todos_{user_id}")
+    if 404 == todos:
+        return None
+
     todo_idx = next((i for i, t in enumerate(todos) if t["id"] == todo_id), None)
 
     if todo_idx is None:
@@ -144,7 +155,10 @@ async def update_todo(
 
 @app.delete("/api/todos/{todo_id}")
 async def delete_todo(todo_id: str, user_id: str = Depends(get_current_user)):
-    todos = await kv_get(f"todos_{user_id}") or []
+    todos = await kv_get(f"todos_{user_id}")
+    if 404 == todos:
+        return None
+
     todos = [t for t in todos if t["id"] != todo_id]
     await kv_put(f"todos_{user_id}", todos)
     return {"message": "Todo deleted"}
